@@ -1,5 +1,5 @@
-from aiogram import Bot, Dispatcher, types, Router
-from aiogram.filters import Command, Text
+from aiogram import Bot, Dispatcher, types, Router, F
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -23,20 +23,6 @@ class RegistrationStates(StatesGroup):
     waiting_for_user_to_rename = State()
 
 # Inline keyboards
-
-# Добавляем клавиатуру для смены роли самим себе (для админов)
-def get_self_role_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👑 Лидер", callback_data="self_role_leader"),
-            InlineKeyboardButton(text="⚔️ Солдат", callback_data="self_role_soldier")
-        ],
-        [
-            InlineKeyboardButton(text="👤 Участник", callback_data="self_role_member"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
-        ]
-    ])
-
 def get_registration_keyboard(request_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -75,6 +61,18 @@ def get_main_menu_keyboard(is_admin: bool = False):
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+def get_self_role_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👑 Лидер", callback_data="self_role_leader"),
+            InlineKeyboardButton(text="⚔️ Солдат", callback_data="self_role_soldier")
+        ],
+        [
+            InlineKeyboardButton(text="👤 Участник", callback_data="self_role_member"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
+        ]
+    ])
+
 async def get_user_with_admin_check(tg_id: int):
     """Получить данные пользователя с проверкой админских прав"""
     user = await db.get_user(tg_id)
@@ -111,8 +109,7 @@ async def cmd_start(message: Message):
 # Help command
 @router.message(Command("help"))
 async def cmd_help(message: Message):
-    user = await db.get_user(message.from_user.id)
-    is_admin = await db.is_admin(message.from_user.id)
+    user, is_admin = await get_user_with_admin_check(message.from_user.id)
     
     if user and user["status"] == "approved":
         help_text = (
@@ -173,7 +170,7 @@ async def cmd_register(message: Message):
         await message.answer("❌ Произошла ошибка при отправке заявки. Попробуйте позже.")
 
 # Registration approval callbacks
-@router.callback_query(Text(startswith="approve_"))
+@router.callback_query(F.data.startswith("approve_"))
 async def approve_registration(callback: CallbackQuery):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -184,7 +181,7 @@ async def approve_registration(callback: CallbackQuery):
     # Update user status
     if await db.update_user_status(user_id, "approved"):
         # Notify user
-        await bot.send_message(user_id, "✅ Ваша заявка одобрена! Теперь у вас есть доступ к функциям бота.")
+        await bot.send_message(user_id, "✅ Ваша заявка одобрена! Теперь у вас есть доступ к функции бота.")
         
         # Update admin message
         await callback.message.edit_text(
@@ -195,7 +192,7 @@ async def approve_registration(callback: CallbackQuery):
     else:
         await callback.answer("Ошибка при одобрении заявки!", show_alert=True)
 
-@router.callback_query(Text(startswith="reject_"))
+@router.callback_query(F.data.startswith("reject_"))
 async def reject_registration(callback: CallbackQuery):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -218,7 +215,7 @@ async def reject_registration(callback: CallbackQuery):
         await callback.answer("Ошибка при отклонении заявки!", show_alert=True)
 
 # Change name
-@router.callback_query(Text("change_name"))
+@router.callback_query(F.data == "change_name")
 async def change_name_start(callback: CallbackQuery, state: FSMContext):
     user, is_admin = await get_user_with_admin_check(callback.from_user.id)
     if not user or user["status"] != "approved":
@@ -241,7 +238,7 @@ async def change_name_finish(message: Message, state: FSMContext):
     await state.clear()
 
 # Request promotion
-@router.callback_query(Text("request_promotion"))
+@router.callback_query(F.data == "request_promotion")
 async def request_promotion(callback: CallbackQuery):
     user, is_admin = await get_user_with_admin_check(callback.from_user.id)
     if not user or user["status"] != "approved":
@@ -275,7 +272,7 @@ async def request_promotion(callback: CallbackQuery):
     await callback.answer()
 
 # Role change callbacks
-@router.callback_query(Text(startswith="role_"))
+@router.callback_query(F.data.startswith("role_"))
 async def handle_role_change(callback: CallbackQuery):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -313,8 +310,8 @@ async def handle_role_change(callback: CallbackQuery):
     else:
         await callback.answer("Ошибка при изменении роли!", show_alert=True)
 
-# Обработчик смены роли для самих себя (админы)
-@router.callback_query(Text(startswith="self_role_"))
+# Self role change for admins
+@router.callback_query(F.data.startswith("self_role_"))
 async def handle_self_role_change(callback: CallbackQuery):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -334,9 +331,9 @@ async def handle_self_role_change(callback: CallbackQuery):
         await callback.answer("❌ Ошибка при изменении роли!", show_alert=True)
 
 # Leave alliance
-@router.callback_query(Text("leave"))
+@router.callback_query(F.data == "leave")
 async def leave_alliance(callback: CallbackQuery):
-    user = await db.get_user(callback.from_user.id)
+    user, is_admin = await get_user_with_admin_check(callback.from_user.id)
     if not user or user["status"] != "approved":
         await callback.answer("У вас нет доступа к этой функции!", show_alert=True)
         return
@@ -348,7 +345,7 @@ async def leave_alliance(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка при выходе из альянса!", show_alert=True)
 
 # Admin commands
-@router.callback_query(Text("change_other_name"))
+@router.callback_query(F.data == "change_other_name")
 async def change_other_name_start(callback: CallbackQuery, state: FSMContext):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -386,7 +383,7 @@ async def change_other_name_finish(message: Message, state: FSMContext):
     
     await state.clear()
 
-@router.callback_query(Text("remove_other"))
+@router.callback_query(F.data == "remove_other")
 async def remove_other_start(callback: CallbackQuery, state: FSMContext):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -418,7 +415,7 @@ async def remove_other_finish(message: Message, state: FSMContext):
     
     await state.clear()
 
-@router.callback_query(Text("add_fake_name"))
+@router.callback_query(F.data == "add_fake_name")
 async def add_fake_name_start(callback: CallbackQuery, state: FSMContext):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -439,7 +436,7 @@ async def add_fake_name_finish(message: Message, state: FSMContext):
     
     await state.clear()
 
-@router.callback_query(Text("delete_fake_name"))
+@router.callback_query(F.data == "delete_fake_name")
 async def delete_fake_name_start(callback: CallbackQuery, state: FSMContext):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
@@ -460,15 +457,15 @@ async def delete_fake_name_finish(message: Message, state: FSMContext):
     
     await state.clear()
 
-@router.callback_query(Text("view_table"))
+@router.callback_query(F.data == "view_table")
 async def view_table(callback: CallbackQuery):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
         return
     
-    # Get data for Excel - теперь админы тоже включены в массивы!
+    # Get data for Excel
     all_users = await db.get_all_users()
-    recent_changers = await db.get_recent_name_changers()  # Теперь правильно работает!
+    recent_changers = await db.get_recent_name_changers()
     leaders = await db.get_leaders()
     soldiers = await db.get_soldiers()
     
@@ -486,6 +483,13 @@ async def view_table(callback: CallbackQuery):
     
     await callback.message.answer(summary)
     await callback.answer("Таблица сформирована! Все админы включены в статистику.")
+
+# Cancel handler
+@router.callback_query(F.data == "cancel")
+async def cancel_handler(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer("Действие отменено.")
+    await callback.answer()
 
 # Grant admin command (only for you)
 @router.message(Command("grant_admin"))
@@ -508,4 +512,4 @@ async def cmd_grant_admin(message: Message):
     except (IndexError, ValueError):
         await message.answer("❌ Используйте: /grant_admin <user_id>")
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")      
+        await message.answer(f"❌ Ошибка: {e}")
