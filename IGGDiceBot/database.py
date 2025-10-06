@@ -87,35 +87,181 @@ class Database:
             print(f"Error getting all users: {e}")
             return []
     
-    async def get_recent_name_changers(self) -> List[Dict]:
-        """Получить пользователей, которые меняли имя за последние 24 часа"""
+    # Fake names table operations (теперь как полноценные игроки)
+    async def add_fake_name(self, player_name: str, role: str = "участник") -> bool:
         try:
-            time_24_hours_ago = (datetime.utcnow() - timedelta(hours=24)).isoformat()
-            response = self.client.table("users")\
-                .select("*")\
-                .gte("updated_at", time_24_hours_ago)\
-                .execute()
+            data = {
+                "username": "Фиктивный игрок",
+                "tag": "без Telegram",
+                "status": "approved",
+                "player_name": player_name,
+                "role": role,
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            response = self.client.table("fake_names").insert(data).execute()
+            return bool(response.data)
+        except Exception as e:
+            print(f"Error adding fake name: {e}")
+            return False
+    
+    async def update_fake_name_role(self, fake_name_id: int, role: str) -> bool:
+        try:
+            data = {
+                "role": role,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            response = self.client.table("fake_names").update(data).eq("id", fake_name_id).execute()
+            return bool(response.data)
+        except Exception as e:
+            print(f"Error updating fake name role: {e}")
+            return False
+    
+    async def update_fake_name(self, fake_name_id: int, player_name: str) -> bool:
+        try:
+            data = {
+                "player_name": player_name,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            response = self.client.table("fake_names").update(data).eq("id", fake_name_id).execute()
+            return bool(response.data)
+        except Exception as e:
+            print(f"Error updating fake name: {e}")
+            return False
+    
+    async def delete_fake_name(self, fake_name_id: int) -> bool:
+        try:
+            response = self.client.table("fake_names").delete().eq("id", fake_name_id).execute()
+            return bool(response.data)
+        except Exception as e:
+            print(f"Error deleting fake name: {e}")
+            return False
+    
+    async def get_all_fake_names(self) -> List[Dict]:
+        try:
+            response = self.client.table("fake_names").select("*").execute()
             return response.data
         except Exception as e:
-            print(f"Error getting recent name changers: {e}")
+            print(f"Error getting fake names: {e}")
+            return []
+    
+    # Комбинированные методы для работы со всеми игроками
+    async def get_all_players(self) -> List[Dict]:
+        """Получить всех игроков (реальные + фиктивные)"""
+        try:
+            users = await self.get_all_users()
+            fake_names = await self.get_all_fake_names()
+            
+            # Добавляем тип игрока для идентификации
+            for user in users:
+                user['player_type'] = 'telegram'
+            for fake in fake_names:
+                fake['player_type'] = 'fake'
+            
+            all_players = users + fake_names
+            return sorted(all_players, key=lambda x: x['player_name'])
+        except Exception as e:
+            print(f"Error getting all players: {e}")
+            return []
+    
+    async def get_recent_players(self) -> List[Dict]:
+        """Получить игроков, которые менялись/создавались за последние 24 часа"""
+        try:
+            time_24_hours_ago = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+            
+            # Получаем недавно измененных реальных пользователей
+            recent_users = self.client.table("users")\
+                .select("*")\
+                .gte("updated_at", time_24_hours_ago)\
+                .execute().data
+            
+            # Получаем недавно измененных фиктивных пользователей
+            recent_fakes = self.client.table("fake_names")\
+                .select("*")\
+                .gte("updated_at", time_24_hours_ago)\
+                .execute().data
+            
+            # Добавляем тип игрока
+            for user in recent_users:
+                user['player_type'] = 'telegram'
+            for fake in recent_fakes:
+                fake['player_type'] = 'fake'
+            
+            return recent_users + recent_fakes
+        except Exception as e:
+            print(f"Error getting recent players: {e}")
             return []
     
     async def get_leaders(self) -> List[Dict]:
-        """Получить всех лидеров"""
+        """Получить всех лидеров (реальные + фиктивные)"""
         try:
-            response = self.client.table("users").select("*").eq("role", "лидер").execute()
-            return response.data
+            user_leaders = self.client.table("users")\
+                .select("*")\
+                .eq("role", "лидер")\
+                .execute().data
+            
+            fake_leaders = self.client.table("fake_names")\
+                .select("*")\
+                .eq("role", "лидер")\
+                .execute().data
+            
+            # Добавляем тип игрока
+            for user in user_leaders:
+                user['player_type'] = 'telegram'
+            for fake in fake_leaders:
+                fake['player_type'] = 'fake'
+            
+            return user_leaders + fake_leaders
         except Exception as e:
             print(f"Error getting leaders: {e}")
             return []
     
     async def get_soldiers(self) -> List[Dict]:
-        """Получить всех солдат"""
+        """Получить всех солдат (реальные + фиктивные)"""
         try:
-            response = self.client.table("users").select("*").eq("role", "солдат").execute()
-            return response.data
+            user_soldiers = self.client.table("users")\
+                .select("*")\
+                .eq("role", "солдат")\
+                .execute().data
+            
+            fake_soldiers = self.client.table("fake_names")\
+                .select("*")\
+                .eq("role", "солдат")\
+                .execute().data
+            
+            # Добавляем тип игрока
+            for user in user_soldiers:
+                user['player_type'] = 'telegram'
+            for fake in fake_soldiers:
+                fake['player_type'] = 'fake'
+            
+            return user_soldiers + fake_soldiers
         except Exception as e:
             print(f"Error getting soldiers: {e}")
+            return []
+    
+    async def get_regular_members(self) -> List[Dict]:
+        """Получить обычных участников (реальные + фиктивные)"""
+        try:
+            user_members = self.client.table("users")\
+                .select("*")\
+                .eq("role", "участник")\
+                .execute().data
+            
+            fake_members = self.client.table("fake_names")\
+                .select("*")\
+                .eq("role", "участник")\
+                .execute().data
+            
+            # Добавляем тип игрока
+            for user in user_members:
+                user['player_type'] = 'telegram'
+            for fake in fake_members:
+                fake['player_type'] = 'fake'
+            
+            return user_members + fake_members
+        except Exception as e:
+            print(f"Error getting regular members: {e}")
             return []
     
     # Admins table operations
@@ -152,29 +298,3 @@ class Database:
         except Exception as e:
             print(f"Error adding admin: {e}")
             return False
-    
-    # Fake names table operations
-    async def add_fake_name(self, name: str) -> bool:
-        try:
-            data = {"name": name}
-            response = self.client.table("fake_names").insert(data).execute()
-            return bool(response.data)
-        except Exception as e:
-            print(f"Error adding fake name: {e}")
-            return False
-    
-    async def delete_fake_name(self, name: str) -> bool:
-        try:
-            response = self.client.table("fake_names").delete().eq("name", name).execute()
-            return bool(response.data)
-        except Exception as e:
-            print(f"Error deleting fake name: {e}")
-            return False
-    
-    async def get_all_fake_names(self) -> List[Dict]:
-        try:
-            response = self.client.table("fake_names").select("*").execute()
-            return response.data
-        except Exception as e:
-            print(f"Error getting fake names: {e}")
-            return []

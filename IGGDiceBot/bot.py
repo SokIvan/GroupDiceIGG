@@ -415,75 +415,145 @@ async def remove_other_finish(message: Message, state: FSMContext):
     
     await state.clear()
 
+# В обработчике добавления фиктивного имени
 @router.callback_query(F.data == "add_fake_name")
 async def add_fake_name_start(callback: CallbackQuery, state: FSMContext):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
         return
     
-    await callback.message.answer("Введите фиктивное имя для добавления:")
+    await callback.message.answer(
+        "Введите фиктивное имя для добавления и роль через пробел:\n"
+        "Например: `Игрок123 участник`\n"
+        "Доступные роли: участник, солдат, лидер"
+    )
     await state.set_state(RegistrationStates.waiting_for_fake_name)
     await callback.answer()
 
 @router.message(RegistrationStates.waiting_for_fake_name)
 async def add_fake_name_finish(message: Message, state: FSMContext):
-    name = message.text.strip()
+    try:
+        parts = message.text.strip().split(' ', 1)
+        if len(parts) == 1:
+            # Только имя, используем роль по умолчанию
+            player_name = parts[0]
+            role = "участник"
+        else:
+            player_name = parts[0]
+            role = parts[1].lower()
+        
+        # Проверяем валидность роли
+        valid_roles = ["участник", "солдат", "лидер"]
+        if role not in valid_roles:
+            await message.answer("❌ Неверная роль! Используйте: участник, солдат или лидер")
+            return
+        
+        if await db.add_fake_name(player_name, role):
+            await message.answer(f"✅ Фиктивный игрок '{player_name}' добавлен с ролью '{role}'!")
+        else:
+            await message.answer("❌ Произошла ошибка при добавлении игрока!")
     
-    if await db.add_fake_name(name):
-        await message.answer(f"✅ Фиктивное имя '{name}' добавлено!")
-    else:
-        await message.answer("❌ Произошла ошибка при добавлении имени!")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
     
     await state.clear()
 
+# В обработчике удаления фиктивного имени
 @router.callback_query(F.data == "delete_fake_name")
 async def delete_fake_name_start(callback: CallbackQuery, state: FSMContext):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
         return
     
-    await callback.message.answer("Введите фиктивное имя для удаления:")
-    await state.set_state(RegistrationStates.waiting_for_name_to_delete)
+    # Показываем список фиктивных игроков для удаления
+    fake_names = await db.get_all_fake_names()
+    if not fake_names:
+        await callback.message.answer("❌ Нет фиктивных игроков для удаления!")
+        return
+    
+    keyboard = []
+    for fake in fake_names:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"🗑️ {fake['player_name']} ({fake['role']})",
+                callback_data=f"delete_fake_{fake['id']}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
+    
+    await callback.message.answer(
+        "Выберите фиктивного игрока для удаления:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
     await callback.answer()
 
-@router.message(RegistrationStates.waiting_for_name_to_delete)
-async def delete_fake_name_finish(message: Message, state: FSMContext):
-    name = message.text.strip()
+@router.callback_query(F.data.startswith("delete_fake_"))
+async def delete_fake_name_handler(callback: CallbackQuery):
+    if not await db.is_admin(callback.from_user.id):
+        await callback.answer("У вас нет прав для этого действия!", show_alert=True)
+        return
     
-    if await db.delete_fake_name(name):
-        await message.answer(f"✅ Фиктивное имя '{name}' удалено!")
+    fake_id = int(callback.data.split("_")[2])
+    
+    if await db.delete_fake_name(fake_id):
+        await callback.message.edit_text("✅ Фиктивный игрок удален!")
+        await callback.answer()
     else:
-        await message.answer("❌ Имя не найдено или произошла ошибка!")
-    
-    await state.clear()
+        await callback.answer("❌ Ошибка при удалении игрока!", show_alert=True)
 
+# Обновляем обработчик просмотра таблицы
 @router.callback_query(F.data == "view_table")
 async def view_table(callback: CallbackQuery):
     if not await db.is_admin(callback.from_user.id):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
         return
     
-    # Get data for Excel
-    all_users = await db.get_all_users()
-    recent_changers = await db.get_recent_name_changers()
+    # Получаем все массивы игроков
+    all_players = await db.get_all_players()
+    recent_players = await db.get_recent_players()
     leaders = await db.get_leaders()
     soldiers = await db.get_soldiers()
+    regular_members = await db.get_regular_members()
     
+    # Формируем статистику
     summary = (
-        f"📊 Статистика альянса:\n\n"
-        f"👥 Всего участников: {len(all_users)}\n"
+        f"📊 Полная статистика альянса:\n\n"
+        f"👥 Всего игроков: {len(all_players)}\n"
+        f"📱 Telegram игроков: {len([p for p in all_players if p['player_type'] == 'telegram'])}\n"
+        f"👤 Фиктивных игроков: {len([p for p in all_players if p['player_type'] == 'fake'])}\n"
         f"👑 Лидеров: {len(leaders)}\n"
         f"⚔️ Солдат: {len(soldiers)}\n"
-        f"✏️ Сменили имя за 24ч: {len(recent_changers)}\n\n"
-        f"📝 Список сменивших имя за 24ч:\n"
+        f"👤 Участников: {len(regular_members)}\n"
+        f"✏️ Изменилось за 24ч: {len(recent_players)}\n\n"
     )
     
-    for user in recent_changers:
-        summary += f"• {user['player_name']} ({user['username']})\n"
+    # Детальная информация по лидерам
+    if leaders:
+        summary += "👑 Лидеры:\n"
+        for player in leaders:
+            emoji = "🤖" if player['player_type'] == 'fake' else "👤"
+            summary += f"{emoji} {player['player_name']}\n"
+        summary += "\n"
+    
+    # Детальная информация по солдатам
+    if soldiers:
+        summary += "⚔️ Солдаты:\n"
+        for player in soldiers:
+            emoji = "🤖" if player['player_type'] == 'fake' else "👤"
+            summary += f"{emoji} {player['player_name']}\n"
+        summary += "\n"
+    
+    # Недавние изменения
+    if recent_players:
+        summary += "✏️ Недавно изменены:\n"
+        for player in recent_players:
+            emoji = "🤖" if player['player_type'] == 'fake' else "👤"
+            role_emoji = "👑" if player['role'] == 'лидер' else "⚔️" if player['role'] == 'солдат' else "👤"
+            summary += f"{emoji} {role_emoji} {player['player_name']}\n"
     
     await callback.message.answer(summary)
-    await callback.answer("Таблица сформирована! Все админы включены в статистику.")
-
+    await callback.answer("Статистика сформирована!")
 # Cancel handler
 @router.callback_query(F.data == "cancel")
 async def cancel_handler(callback: CallbackQuery, state: FSMContext):
