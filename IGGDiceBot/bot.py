@@ -583,3 +583,193 @@ async def cmd_grant_admin(message: Message):
         await message.answer("❌ Используйте: /grant_admin <user_id>")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
+        
+
+# Команды управления разрешенными чатами (только для владельца)
+@router.message(Command("add_chat"))
+async def cmd_add_chat(message: Message):
+    """Добавить текущий чат в разрешенные"""
+    if message.from_user.id != int(MY_TG_ID):
+        await message.answer("❌ У вас нет прав для этой команды!")
+        return
+    
+    chat_id = message.chat.id
+    chat_title = message.chat.title or "Личные сообщения"
+    
+    if await db.is_chat_allowed(chat_id):
+        await message.answer("✅ Этот чат уже в списке разрешенных!")
+        return
+    
+    if await db.add_allowed_chat(chat_id, chat_title):
+        await message.answer(f"✅ Чат '{chat_title}' добавлен в разрешенные!")
+    else:
+        await message.answer("❌ Ошибка при добавлении чата!")
+
+@router.message(Command("remove_chat"))
+async def cmd_remove_chat(message: Message):
+    """Удалить текущий чат из разрешенных"""
+    if message.from_user.id != int(MY_TG_ID):
+        await message.answer("❌ У вас нет прав для этой команды!")
+        return
+    
+    chat_id = message.chat.id
+    chat_title = message.chat.title or "Личные сообщения"
+    
+    if not await db.is_chat_allowed(chat_id):
+        await message.answer("❌ Этот чат не в списке разрешенных!")
+        return
+    
+    if await db.remove_allowed_chat(chat_id):
+        await message.answer(f"✅ Чат '{chat_title}' удален из разрешенных!")
+    else:
+        await message.answer("❌ Ошибка при удалении чата!")
+
+@router.message(Command("list_chats"))
+async def cmd_list_chats(message: Message):
+    """Показать список разрешенных чатов"""
+    if message.from_user.id != int(MY_TG_ID):
+        await message.answer("❌ У вас нет прав для этой команды!")
+        return
+    
+    allowed_chats = await db.get_all_allowed_chats()
+    if not allowed_chats:
+        await message.answer("📝 Нет разрешенных чатов.")
+        return
+    
+    chat_list = "📝 Разрешенные чаты:\n\n"
+    for chat in allowed_chats:
+        chat_list += f"• ID: {chat['chat_id']}\n"
+        chat_list += f"  Название: {chat['chat_title']}\n"
+        chat_list += f"  Добавлен: {chat['created_at'][:10]}\n\n"
+    
+    await message.answer(chat_list)
+    
+
+# Хендлер для +NICK <Свое имя>
+@router.message(F.text.startswith("+NICK "))
+async def handle_plus_nick(message: Message):
+    # Проверяем, что это разрешенный чат
+    if not await db.is_chat_allowed(message.chat.id):
+        return
+    
+    user_id = message.from_user.id
+    username = message.from_user.username or "Без имени"
+    tag = f"@{username}" if username else f"id{user_id}"
+    
+    # Извлекаем имя из сообщения
+    try:
+        player_name = message.text[6:].strip()  # Убираем "+NICK "
+        if not player_name:
+            await message.reply("❌ Укажите имя после +NICK")
+            return
+    except:
+        await message.reply("❌ Неверный формат. Используйте: +NICK ВашеИмя")
+        return
+    
+    # Проверяем существующего пользователя
+    existing_user = await db.get_user(user_id)
+    
+    if existing_user:
+        # Пользователь существует - обновляем имя
+        if await db.update_user_name(user_id, player_name):
+            await message.reply(f"✅ Ваш ник обновлен на: {player_name}")
+            # Отправляем уведомление в личные сообщения
+            try:
+                await bot.send_message(
+                    user_id,
+                    f"✅ Ваш ник успешно обновлен на: {player_name}\n"
+                    f"Теперь вам доступен полный функционал бота!"
+                )
+            except:
+                pass  # Если бот не может написать в ЛС
+        else:
+            await message.reply("❌ Ошибка при обновлении ника")
+    else:
+        # Новый пользователь - регистрируем без подтверждения
+        if await db.add_user(user_id, username, tag, "approved"):
+            # Сразу обновляем имя
+            await db.update_user_name(user_id, player_name)
+            
+            await message.reply(f"✅ Вы зарегистрированы с ником: {player_name}")
+            # Отправляем уведомление в личные сообщения
+            try:
+                await bot.send_message(
+                    user_id,
+                    f"🎉 Добро пожаловать в альянс Dice!\n"
+                    f"✅ Вы успешно зарегистрированы с ником: {player_name}\n\n"
+                    f"Теперь вам доступен полный функционал бота!\n"
+                    f"Используйте команду /start для просмотра доступных функций."
+                )
+            except:
+                pass  # Если бот не может написать в ЛС
+        else:
+            await message.reply("❌ Ошибка при регистрации")
+
+# Хендлер для !NICK <Его имя> (ответ на сообщение)
+@router.message(F.text.startswith("!NICK "))
+async def handle_exclamation_nick(message: Message):
+    # Проверяем, что это разрешенный чат
+    if not await db.is_chat_allowed(message.chat.id):
+        return
+    
+    # Проверяем, что отправитель - админ
+    if not await db.is_admin(message.from_user.id):
+        return
+    
+    # Проверяем, что это ответ на сообщение
+    if not message.reply_to_message:
+        await message.reply("❌ Эта команда должна быть ответом на сообщение пользователя!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    target_id = target_user.id
+    target_username = target_user.username or "Без имени"
+    target_tag = f"@{target_username}" if target_username else f"id{target_id}"
+    
+    # Извлекаем имя из сообщения
+    try:
+        player_name = message.text[6:].strip()  # Убираем "!NICK "
+        if not player_name:
+            await message.reply("❌ Укажите имя после !NICK")
+            return
+    except:
+        await message.reply("❌ Неверный формат. Используйте: !NICK ИмяИгрока")
+        return
+    
+    # Проверяем существующего пользователя
+    existing_user = await db.get_user(target_id)
+    
+    if existing_user:
+        # Пользователь существует - обновляем имя
+        if await db.update_user_name(target_id, player_name):
+            await message.reply(f"✅ Ник пользователя обновлен на: {player_name}")
+            # Уведомляем пользователя
+            try:
+                await bot.send_message(
+                    target_id,
+                    f"✅ Администратор изменил ваш ник на: {player_name}"
+                )
+            except:
+                pass
+        else:
+            await message.reply("❌ Ошибка при обновлении ника")
+    else:
+        # Новый пользователь - регистрируем
+        if await db.add_user(target_id, target_username, target_tag, "approved"):
+            # Сразу обновляем имя
+            await db.update_user_name(target_id, player_name)
+            
+            await message.reply(f"✅ Пользователь зарегистрирован с ником: {player_name}")
+            # Уведомляем пользователя
+            try:
+                await bot.send_message(
+                    target_id,
+                    f"🎉 Добро пожаловать в альянс Dice!\n"
+                    f"✅ Администратор зарегистрировал вас с ником: {player_name}\n\n"
+                    f"Теперь вам доступен полный функционал бота!\n"
+                    f"Используйте команду /start для просмотра доступных функций."
+                )
+            except:
+                pass
+        else:
+            await message.reply("❌ Ошибка при регистрации пользователя")
