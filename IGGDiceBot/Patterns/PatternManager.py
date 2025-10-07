@@ -1,3 +1,9 @@
+import json
+from typing import List
+from Patterns.Pattern import Pattern
+from database import Database
+
+
 class PatternManager:
     def __init__(self, db: Database):
         self.db = db

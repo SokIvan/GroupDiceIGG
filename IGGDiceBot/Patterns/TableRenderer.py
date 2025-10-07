@@ -1,9 +1,12 @@
+from typing import Dict, List
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.font_manager as fm
 from io import BytesIO
 from PIL import Image
+
+from Patterns.Pattern import Pattern
 
 class TableRenderer:
     def __init__(self):
