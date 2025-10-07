@@ -10,7 +10,7 @@ class PatternManager:
     
     async def get_active_pattern(self) -> Pattern:
         """Получить активный паттерн"""
-        response = await self.db.client.table('Table_Patterns')\
+        response = await self.db.client.table('table_patterns')\
             .select('*')\
             .eq('status', 'Active')\
             .execute()
