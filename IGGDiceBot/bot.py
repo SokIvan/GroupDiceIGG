@@ -678,7 +678,6 @@ async def handle_plus_nick(message: Message):
                 await bot.send_message(
                     user_id,
                     f"✅ Ваш ник успешно обновлен на: {player_name}\n"
-                    f"Теперь вам доступен полный функционал бота!"
                 )
             except:
                 pass  # Если бот не может написать в ЛС
@@ -773,3 +772,32 @@ async def handle_exclamation_nick(message: Message):
                 pass
         else:
             await message.reply("❌ Ошибка при регистрации пользователя")
+            
+@router.message(F.text.startswith("NICKS"))
+async def handle_get_all_nick(message: types.Message, state: FSMContext):
+
+    # Проверяем наличие чата в allowed_chats
+    if not db.is_chat_allowed(message.chat.id):
+        await message.answer("Этот чат не авторизован для использования данной команды.")
+        return
+    
+    # Получаем всех пользователей, сортируем по player_name
+    users_response = await db.client.table('users')\
+        .select('tag, player_name')\
+        .order('player_name')\
+        .execute()
+    
+    if not users_response.data:
+        await message.answer("Список игроков пуст.")
+        return
+    
+    # Формируем красивый список
+    users_list = []
+    for index, user in enumerate(users_response.data, 1):
+        tag = user.get('tag', 'N/A')
+        player_name = user.get('player_name', 'Без имени')
+        users_list.append(f"{index}. @{tag} - {player_name}")
+    
+    response_text = "📋 Список игроков:\n\n" + "\n".join(users_list)
+    
+    await message.answer(response_text)
