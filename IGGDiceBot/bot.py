@@ -796,7 +796,7 @@ async def handle_get_all_nick(message: types.Message, state: FSMContext):
     for index, user in enumerate(users_response.data, 1):
         tag = user.get('tag', 'N/A')
         player_name = user.get('player_name', 'Без имени')
-        users_list.append(f"{index}. @{tag} - {player_name}")
+        users_list.append(f"{index}. {tag} - {player_name}")
     
     response_text = "📋 Список игроков:\n\n" + "\n".join(users_list)
     
