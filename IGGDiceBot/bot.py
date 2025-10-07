@@ -1,8 +1,11 @@
+import json
 from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from Patterns.PatternManager import PatternManager
+from Patterns.TableRenderer import TableRenderer
 from config import BOT_TOKEN, ADMIN_CHAT_ID, MY_TG_ID
 from database import Database
 import asyncio
@@ -21,6 +24,7 @@ class RegistrationStates(StatesGroup):
     waiting_for_name_to_delete = State()
     waiting_for_user_to_remove = State()
     waiting_for_user_to_rename = State()
+    waiting_pattern_selection = State()
 
 # Inline keyboards
 def get_registration_keyboard(request_id: int):
@@ -43,14 +47,14 @@ def get_role_keyboard(request_id: int):
         ]
     ])
 
-def get_main_menu_keyboard(is_admin: bool = False):
+def get_main_menu_keyboard(is_admin: bool = False, is_God: bool = False):
     keyboard = [
         [InlineKeyboardButton(text="✏️ Поменять имя", callback_data="change_name")],
         [InlineKeyboardButton(text="📈 Запросить повышение", callback_data="request_promotion")],
         [InlineKeyboardButton(text="🚪 Уйти", callback_data="leave")]
     ]
     
-    if is_admin:
+    if is_admin or is_God:
         keyboard.extend([
             [InlineKeyboardButton(text="👤 Поменять имя другому", callback_data="change_other_name")],
             [InlineKeyboardButton(text="🗑️ Удалить другого", callback_data="remove_other")],
@@ -58,8 +62,19 @@ def get_main_menu_keyboard(is_admin: bool = False):
             [InlineKeyboardButton(text="➖ Удалить фиктивное имя", callback_data="delete_fake_name")],
             [InlineKeyboardButton(text="📊 Посмотреть таблицу", callback_data="view_table")]
         ])
+        
+    if is_God:
+        keyboard.extend([
+            [InlineKeyboardButton(text="📄 Задать паттерн", callback_data="add_pattern")],
+            [InlineKeyboardButton(text="📑 Поменять паттерн", callback_data="set_pattern")],
+        ])
+
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+
+
 
 def get_self_role_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -98,7 +113,7 @@ async def cmd_start(message: Message):
                 f"Ваш текущий ник: {user['player_name']}\n"
                 f"Ваша роль: {user['role']}\n"
                 f"{'👑 Вы администратор' if is_admin else ''}",
-                reply_markup=get_main_menu_keyboard(is_admin)
+                reply_markup=get_main_menu_keyboard(is_admin,message.from_user.id == int(MY_TG_ID))
             )
         else:
             # Pending user
@@ -127,8 +142,18 @@ async def cmd_help(message: Message):
                 "➖ Удалить фиктивное имя - удалить фиктивное имя\n"
                 "📊 Посмотреть таблицу - получить Excel таблицу\n"
             )
+        if message.from_user.id == int(MY_TG_ID):
+                        help_text += (
+                "📄 Задать паттерн - задает паттерн строительства таблицы\n"
+                "📑 Поменять паттерн - выбирает паттерн среди существующих\n"
+                "Также доступны команды:\n"
+                "/list_chats - список чатов в которых действует система NICK\n"
+                "/add_chat - команда для добавления системы NICK в текущий чат\n"
+                "/remove_chat - команда для удаления системы NICK из текущего чата\n"
+                "/grant_admin <id> - выдает права администратора бота для пользователя с заданным id\n"
+            )
         
-        await message.answer(help_text, reply_markup=get_main_menu_keyboard(is_admin))
+        await message.answer(help_text, reply_markup=get_main_menu_keyboard(is_admin,message.from_user.id == int(MY_TG_ID)))
     else:
         await message.answer("Для доступа к функциям бота необходимо зарегистрироваться. Используйте /register")
 
@@ -552,7 +577,31 @@ async def view_table(callback: CallbackQuery):
             role_emoji = "👑" if player['role'] == 'лидер' else "⚔️" if player['role'] == 'солдат' else "👤"
             summary += f"{emoji} {role_emoji} {player['player_name']}\n"
     
-    await callback.message.answer(summary)
+    
+    
+    pattern_manager = PatternManager(db)
+    pattern = await pattern_manager.get_active_pattern()
+    
+    if not pattern:
+        await callback.message.answer("Нет активного паттерна. Сначала создайте паттерн.")
+        return
+    
+    # Получаем данные игроков     
+    users_response = db.get_all_players()
+    # Здесь нужно получить списки лидеров, солдат и обновивших
+    # (замените на вашу логику получения этих списков)
+    leaders = db.get_leaders()  # Ваша логика для лидеров
+    soldiers = db.get_soldiers()  # Ваша логика для солдат
+    updated_players = db.get_recent_players()  # Игроки, обновившие имя за последние N дней
+    
+    renderer = TableRenderer()
+    grouped_players = renderer.group_players_by_pattern(users_response.data, pattern)
+    
+    # Создаем изображение
+    image_buf = renderer.create_table_image(pattern, grouped_players, leaders, soldiers, updated_players)
+    
+    
+    await callback.message.answer_photo(InputFile(image_buf, filename='player_table.png'),caption=summary)
     await callback.answer("Статистика сформирована!")
 # Cancel handler
 @router.callback_query(F.data == "cancel")
@@ -801,3 +850,85 @@ async def handle_get_all_nick(message: types.Message, state: FSMContext):
     response_text = "📋 Список игроков:\n\n" + "\n".join(users_list)
     
     await message.answer(response_text)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+from aiogram.types import InputFile, ReplyKeyboardMarkup, KeyboardButton
+
+# Хендлер для добавления паттерна через JSON
+@router.callback_query(F.data == "add_pattern")
+async def cmd_add_pattern(message: types.Message, state: FSMContext):
+    """Добавление паттерна через JSON в сообщении"""
+    try:
+        # Ожидаем JSON вида:
+        # {"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}
+        
+        data = json.loads(message.text)
+        
+        pattern_manager = PatternManager(Database())
+        await pattern_manager.create_pattern(
+            data['name'],
+            data['elements'],
+            data['mas_elements']
+        )
+        
+        await message.answer(f"Паттерн '{data['name']}' успешно создан!")
+        
+    except json.JSONDecodeError:
+        await message.answer("Ошибка: Неверный формат JSON")
+    except KeyError as e:
+        await message.answer(f"Ошибка: Отсутствует поле {e}")
+
+# Хендлер для выбора активного паттерна
+@router.callback_query(F.data == "set_pattern")
+async def cmd_set_pattern(message: types.Message, state: FSMContext):
+    """Установка активного паттерна"""
+    pattern_manager = PatternManager(Database())
+    patterns = await pattern_manager.get_all_patterns()
+    
+    if not patterns:
+        await message.answer("Нет доступных паттернов.")
+        return
+    
+    # Создаем клавиатуру для выбора
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    for pattern in patterns:
+        status = "✅" if pattern.status == "Active" else "❌"
+        keyboard.add(KeyboardButton(f"{status} {pattern.pattern_name} (ID: {pattern.id})"))
+    
+    await message.answer("Выберите паттерн для активации:", reply_markup=keyboard)
+    await state.set_state(RegistrationStates.waiting_pattern_selection)
+
+
+@router.message(RegistrationStates.waiting_pattern_selection)
+async def process_pattern_selection(message: types.Message, state: FSMContext):
+    """Обработка выбора паттерна"""
+    try:
+        # Извлекаем ID из текста кнопки
+        pattern_id = int(message.text.split("ID: ")[1].split(")")[0])
+        
+        pattern_manager = PatternManager(Database())
+        await pattern_manager.set_active_pattern(pattern_id)
+        
+        await message.answer("Паттерн успешно активирован!", reply_markup=types.ReplyKeyboardRemove())
+        await state.finish()
+        
+    except (IndexError, ValueError):
+        await message.answer("Ошибка выбора паттерна. Попробуйте еще раз.")
