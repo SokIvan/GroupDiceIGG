@@ -782,7 +782,7 @@ async def handle_get_all_nick(message: types.Message, state: FSMContext):
         return
     
     # Получаем всех пользователей, сортируем по player_name
-    users_response = await db.client.table('users')\
+    users_response = db.client.table('users')\
         .select('tag, player_name')\
         .order('player_name')\
         .execute()
