@@ -10,7 +10,7 @@ class PatternManager:
     
     async def get_active_pattern(self) -> Pattern:
         """Получить активный паттерн"""
-        response = await self.db.client.table('table_patterns')\
+        response = self.db.client.table('table_patterns')\
             .select('*')\
             .eq('status', 'Active')\
             .execute()
@@ -22,12 +22,12 @@ class PatternManager:
     async def set_active_pattern(self, pattern_id: int):
         """Установить активный паттерн"""
         # Сначала сбрасываем все статусы
-        await self.db.client.table('table_patterns')\
+        self.db.client.table('table_patterns')\
             .update({'status': 'Disable'})\
             .execute()
         
         # Устанавливаем новый активный
-        await self.db.client.table('table_patterns')\
+        self.db.client.table('table_patterns')\
             .update({'status': 'Active', 'updated_at': 'now()'})\
             .eq('id', pattern_id)\
             .execute()
@@ -41,7 +41,7 @@ class PatternManager:
             'status': 'Disable'
         }
         
-        response = await self.db.client.table('table_patterns')\
+        response = self.db.client.table('table_patterns')\
             .insert(pattern_data)\
             .execute()
         
@@ -49,7 +49,7 @@ class PatternManager:
     
     async def get_all_patterns(self):
         """Получить все паттерны"""
-        response = await self.db.client.table('table_patterns')\
+        response = self.db.client.table('table_patterns')\
             .select('*')\
             .order('created_at')\
             .execute()
