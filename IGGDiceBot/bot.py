@@ -943,9 +943,9 @@ async def process_pattern_selection(callback: CallbackQuery, state: FSMContext):
         pattern_manager = PatternManager(db)
         await pattern_manager.set_active_pattern(pattern_id)
         
-        await callback.message.edit_text("✅Паттерн успешно активирован!", reply_markup=types.ReplyKeyboardRemove())
+        await callback.message.answer("✅Паттерн успешно активирован!", reply_markup=types.ReplyKeyboardRemove())
         
         
     except (IndexError, ValueError):
-        await callback.message.edit_text("❌Ошибка выбора паттерна. Попробуйте еще раз.", reply_markup=types.ReplyKeyboardRemove())
+        await callback.message.answer("❌Ошибка выбора паттерна. Попробуйте еще раз.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
