@@ -881,6 +881,7 @@ from aiogram.types import  ReplyKeyboardMarkup, KeyboardButton
 @router.callback_query(F.data == "add_pattern")
 async def cmd_add_pattern(callback: CallbackQuery, state: FSMContext):
     """Добавление нового паттерна"""
+    print("No Magic.")
     await callback.message.answer('Введите новый паттерн в формате\n{"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}')
     await state.set_state(RegistrationStates.waiting_pattern_add)
 
@@ -890,7 +891,7 @@ async def cmd_add_pattern(callback: CallbackQuery, state: FSMContext):
 async def process_pattern_selection(message: types.Message, state: FSMContext):
     """Добавление паттерна через JSON в сообщении"""
     try:
-        
+        print("Magic. I was here? Yes i Am!")
         data = json.loads(message.text)
         pattern_manager = PatternManager(db)
         await pattern_manager.create_pattern(
