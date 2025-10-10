@@ -1,4 +1,5 @@
 import os
+import string
 from supabase import create_client, Client
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
@@ -27,6 +28,14 @@ class Database:
             print(f"Error adding user: {e}")
             return False
 
+    async def get_user_by_player_name(self, player_name: string) -> Optional[Dict]:
+        try:
+            response = self.client.table("users").select("*").eq("player_name", player_name).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error getting user: {e}")
+            return None
+
     async def get_user(self, tg_id: int) -> Optional[Dict]:
         try:
             response = self.client.table("users").select("*").eq("tg_id", tg_id).execute()
@@ -34,6 +43,7 @@ class Database:
         except Exception as e:
             print(f"Error getting user: {e}")
             return None
+
 
     async def update_user_status(self, tg_id: int, status: str) -> bool:
         try:

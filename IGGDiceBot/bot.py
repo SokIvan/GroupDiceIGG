@@ -414,15 +414,19 @@ async def remove_other_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer("У вас нет прав для этого действия!", show_alert=True)
         return
     
-    await callback.message.answer("Введите TG ID пользователя для удаления:")
+    await callback.message.answer("Введите игровое имя пользователя для удаления:")
     await state.set_state(RegistrationStates.waiting_for_user_to_remove)
     await callback.answer()
 
 @router.message(RegistrationStates.waiting_for_user_to_remove)
 async def remove_other_finish(message: Message, state: FSMContext):
     try:
-        user_id = int(message.text.strip())
-        
+        user_player_name = message.text.strip()
+        user_id = 0
+        user = db.get_user_by_player_name(user_player_name)
+        if user:
+            user_id = user['tg_id']
+            
         # Check if target is admin
         if await db.is_admin(user_id):
             await message.answer("❌ Нельзя удалять администраторов!")
