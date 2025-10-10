@@ -879,10 +879,10 @@ from aiogram.types import  ReplyKeyboardMarkup, KeyboardButton
 
 # Хендлер для добавления паттерна через JSON
 @router.callback_query(F.data == "add_pattern")
-async def cmd_add_pattern(message: types.Message, state: FSMContext):
+async def cmd_add_pattern(callback: CallbackQuery, state: FSMContext):
     """Добавление нового паттерна"""
-    await message.answer('Введите новый паттерн в формате\n{"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}')
-    await state(RegistrationStates.waiting_pattern_add)
+    await callback.message.answer('Введите новый паттерн в формате\n{"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}')
+    await state.set_state(RegistrationStates.waiting_pattern_add)
 
 
 
@@ -910,13 +910,13 @@ async def process_pattern_selection(message: types.Message, state: FSMContext):
 
 # Хендлер для выбора активного паттерна
 @router.callback_query(F.data == "set_pattern")
-async def cmd_set_pattern(message: types.Message, state: FSMContext):
+async def cmd_set_pattern(callback: CallbackQuery, state: FSMContext):
     """Установка активного паттерна"""
     pattern_manager = PatternManager(db)
     patterns = await pattern_manager.get_all_patterns()
     
     if not patterns:
-        await message.answer("❌Нет доступных паттернов.")
+        await callback.message.answer("❌Нет доступных паттернов.")
         return
     
     # Создаем клавиатуру для выбора
@@ -927,7 +927,7 @@ async def cmd_set_pattern(message: types.Message, state: FSMContext):
         inline_buttons.append(InlineKeyboardButton(f"{status} {pattern.pattern_name} (ID: {pattern.id})", callback_data=f"PATTERN {pattern.id}"))
     keyboard = InlineKeyboardMarkup(inline_buttons)
     
-    await message.answer("Выберите паттерн для активации:", reply_markup=keyboard)
+    await callback.message.answer("Выберите паттерн для активации:", reply_markup=keyboard)
     await state.set_state(RegistrationStates.waiting_pattern_selection)
 
 
