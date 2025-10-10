@@ -925,7 +925,7 @@ async def cmd_set_pattern(callback: CallbackQuery, state: FSMContext):
 
     for pattern in patterns:
         status = "✅" if pattern.status == "Active" else "❌"
-        inline_buttons.append(InlineKeyboardButton(f"{status} {pattern.pattern_name} (ID: {pattern.id})", callback_data=f"PATTERN {pattern.id}"))
+        inline_buttons.append([InlineKeyboardButton(text = f"{status} {pattern.pattern_name} (ID: {pattern.id})", callback_data=f"PATTERN {pattern.id}")])
     keyboard = InlineKeyboardMarkup(inline_buttons)
     
     await callback.message.answer("Выберите паттерн для активации:", reply_markup=keyboard)
