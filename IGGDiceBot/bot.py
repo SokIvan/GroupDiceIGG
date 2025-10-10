@@ -901,7 +901,7 @@ async def process_pattern_selection(message: types.Message, state: FSMContext):
         )
         
         await message.answer(f"✅Паттерн '{data['name']}' успешно создан!")
-        state.clear()
+        state.finish()
         
     except json.JSONDecodeError:
         await message.answer("❌Ошибка: Неверный формат JSON")
