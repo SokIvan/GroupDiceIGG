@@ -883,7 +883,7 @@ async def cmd_add_pattern(callback: CallbackQuery, state: FSMContext):
     """Добавление нового паттерна"""
     await callback.message.answer('Введите новый паттерн в формате\n{"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}')
     await state.set_state(RegistrationStates.waiting_pattern_add)
-    await state.clear()
+    await callback.answer()
 
 
 
@@ -900,12 +900,13 @@ async def process_pattern_selection(message: types.Message, state: FSMContext):
         )
         
         await message.answer(f"✅Паттерн '{data['name']}' успешно создан!")
-        state.clear()
+
         
     except json.JSONDecodeError:
         await message.answer("❌Ошибка: Неверный формат JSON")
     except KeyError as e:
         await message.answer(f"❌Ошибка: Отсутствует поле {e}")
+    await state.clear()
     
 
 # Хендлер для выбора активного паттерна
@@ -929,7 +930,7 @@ async def cmd_set_pattern(callback: CallbackQuery, state: FSMContext):
     
     await callback.message.answer("Выберите паттерн для активации:", reply_markup=keyboard)
     await state.set_state(RegistrationStates.waiting_pattern_selection)
-    await state.clear()
+    await callback.answer()
 
 
 @router.callback_query(RegistrationStates.waiting_pattern_selection)
@@ -943,7 +944,8 @@ async def process_pattern_selection(callback: CallbackQuery, state: FSMContext):
         await pattern_manager.set_active_pattern(pattern_id)
         
         await callback.message.edit_text("✅Паттерн успешно активирован!", reply_markup=types.ReplyKeyboardRemove())
-        await state.clear()
+        
         
     except (IndexError, ValueError):
         await callback.message.edit_text("❌Ошибка выбора паттерна. Попробуйте еще раз.", reply_markup=types.ReplyKeyboardRemove())
+    await state.clear()
