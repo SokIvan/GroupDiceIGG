@@ -881,9 +881,9 @@ from aiogram.types import  ReplyKeyboardMarkup, KeyboardButton
 @router.callback_query(F.data == "add_pattern")
 async def cmd_add_pattern(callback: CallbackQuery, state: FSMContext):
     """Добавление нового паттерна"""
-    print("No Magic.")
     await callback.message.answer('Введите новый паттерн в формате\n{"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}')
     await state.set_state(RegistrationStates.waiting_pattern_add)
+    await state.clear()
 
 
 
@@ -891,7 +891,6 @@ async def cmd_add_pattern(callback: CallbackQuery, state: FSMContext):
 async def process_pattern_selection(message: types.Message, state: FSMContext):
     """Добавление паттерна через JSON в сообщении"""
     try:
-        print("Magic. I was here? Yes i Am!")
         data = json.loads(message.text)
         pattern_manager = PatternManager(db)
         await pattern_manager.create_pattern(
@@ -901,7 +900,7 @@ async def process_pattern_selection(message: types.Message, state: FSMContext):
         )
         
         await message.answer(f"✅Паттерн '{data['name']}' успешно создан!")
-        state.finish()
+        state.clear()
         
     except json.JSONDecodeError:
         await message.answer("❌Ошибка: Неверный формат JSON")
@@ -930,6 +929,7 @@ async def cmd_set_pattern(callback: CallbackQuery, state: FSMContext):
     
     await callback.message.answer("Выберите паттерн для активации:", reply_markup=keyboard)
     await state.set_state(RegistrationStates.waiting_pattern_selection)
+    await state.clear()
 
 
 @router.callback_query(RegistrationStates.waiting_pattern_selection)
