@@ -1,7 +1,7 @@
 import json
 from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, InputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from Patterns.PatternManager import PatternManager
@@ -25,6 +25,7 @@ class RegistrationStates(StatesGroup):
     waiting_for_user_to_remove = State()
     waiting_for_user_to_rename = State()
     waiting_pattern_selection = State()
+    waiting_pattern_add = State()
 
 # Inline keyboards
 def get_registration_keyboard(request_id: int):
@@ -47,14 +48,14 @@ def get_role_keyboard(request_id: int):
         ]
     ])
 
-def get_main_menu_keyboard(is_admin: bool = False, is_God: bool = False):
+def get_main_menu_keyboard(is_admin: bool = False, is_god: bool = False):
     keyboard = [
         [InlineKeyboardButton(text="✏️ Поменять имя", callback_data="change_name")],
         [InlineKeyboardButton(text="📈 Запросить повышение", callback_data="request_promotion")],
         [InlineKeyboardButton(text="🚪 Уйти", callback_data="leave")]
     ]
     
-    if is_admin or is_God:
+    if is_admin or is_god:
         keyboard.extend([
             [InlineKeyboardButton(text="👤 Поменять имя другому", callback_data="change_other_name")],
             [InlineKeyboardButton(text="🗑️ Удалить другого", callback_data="remove_other")],
@@ -63,7 +64,7 @@ def get_main_menu_keyboard(is_admin: bool = False, is_God: bool = False):
             [InlineKeyboardButton(text="📊 Посмотреть таблицу", callback_data="view_table")]
         ])
         
-    if is_God:
+    if is_god:
         keyboard.extend([
             [InlineKeyboardButton(text="📄 Задать паттерн", callback_data="add_pattern")],
             [InlineKeyboardButton(text="📑 Поменять паттерн", callback_data="set_pattern")],
@@ -874,65 +875,74 @@ async def handle_get_all_nick(message: types.Message, state: FSMContext):
 
 
 
-from aiogram.types import InputFile, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import  ReplyKeyboardMarkup, KeyboardButton
 
 # Хендлер для добавления паттерна через JSON
 @router.callback_query(F.data == "add_pattern")
 async def cmd_add_pattern(message: types.Message, state: FSMContext):
+    """Добавление нового паттерна"""
+    await message.answer('Введите новый паттерн в формате\n{"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}')
+    await state(RegistrationStates.waiting_pattern_add)
+
+
+
+@router.message(RegistrationStates.waiting_pattern_selection)
+async def process_pattern_selection(message: types.Message, state: FSMContext):
     """Добавление паттерна через JSON в сообщении"""
     try:
-        # Ожидаем JSON вида:
-        # {"name": "DiceTeam", "elements": ["🎲","⚡","🎯"], "mas_elements": [["🎲"],["⚡"],["🎯"]]}
         
         data = json.loads(message.text)
-        
-        pattern_manager = PatternManager(Database())
+        pattern_manager = PatternManager(db)
         await pattern_manager.create_pattern(
             data['name'],
             data['elements'],
             data['mas_elements']
         )
         
-        await message.answer(f"Паттерн '{data['name']}' успешно создан!")
+        await message.answer(f"✅Паттерн '{data['name']}' успешно создан!")
+        state.clear()
         
     except json.JSONDecodeError:
-        await message.answer("Ошибка: Неверный формат JSON")
+        await message.answer("❌Ошибка: Неверный формат JSON")
     except KeyError as e:
-        await message.answer(f"Ошибка: Отсутствует поле {e}")
+        await message.answer(f"❌Ошибка: Отсутствует поле {e}")
+    
 
 # Хендлер для выбора активного паттерна
 @router.callback_query(F.data == "set_pattern")
 async def cmd_set_pattern(message: types.Message, state: FSMContext):
     """Установка активного паттерна"""
-    pattern_manager = PatternManager(Database())
+    pattern_manager = PatternManager(db)
     patterns = await pattern_manager.get_all_patterns()
     
     if not patterns:
-        await message.answer("Нет доступных паттернов.")
+        await message.answer("❌Нет доступных паттернов.")
         return
     
     # Создаем клавиатуру для выбора
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    inline_buttons = []
+
     for pattern in patterns:
         status = "✅" if pattern.status == "Active" else "❌"
-        keyboard.add(KeyboardButton(f"{status} {pattern.pattern_name} (ID: {pattern.id})"))
+        inline_buttons.append(InlineKeyboardButton(f"{status} {pattern.pattern_name} (ID: {pattern.id})", callback_data=f"PATTERN {pattern.id}"))
+    keyboard = InlineKeyboardMarkup(inline_buttons)
     
     await message.answer("Выберите паттерн для активации:", reply_markup=keyboard)
     await state.set_state(RegistrationStates.waiting_pattern_selection)
 
 
-@router.message(RegistrationStates.waiting_pattern_selection)
-async def process_pattern_selection(message: types.Message, state: FSMContext):
+@router.callback_query(RegistrationStates.waiting_pattern_selection)
+async def process_pattern_selection(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора паттерна"""
     try:
         # Извлекаем ID из текста кнопки
-        pattern_id = int(message.text.split("ID: ")[1].split(")")[0])
+        pattern_id = int(callback.message.text.split(" ")[-1])
         
-        pattern_manager = PatternManager(Database())
+        pattern_manager = PatternManager(db)
         await pattern_manager.set_active_pattern(pattern_id)
         
-        await message.answer("Паттерн успешно активирован!", reply_markup=types.ReplyKeyboardRemove())
-        await state.finish()
+        await callback.message.edit_text("✅Паттерн успешно активирован!", reply_markup=types.ReplyKeyboardRemove())
+        await state.clear()
         
     except (IndexError, ValueError):
-        await message.answer("Ошибка выбора паттерна. Попробуйте еще раз.")
+        await callback.message.edit_text("❌Ошибка выбора паттерна. Попробуйте еще раз.", reply_markup=types.ReplyKeyboardRemove())
