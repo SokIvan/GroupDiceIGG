@@ -887,7 +887,7 @@ async def cmd_add_pattern(callback: CallbackQuery, state: FSMContext):
 
 
 
-@router.message(RegistrationStates.waiting_pattern_selection)
+@router.message(RegistrationStates.waiting_pattern_add)
 async def process_pattern_selection(message: types.Message, state: FSMContext):
     """Добавление паттерна через JSON в сообщении"""
     try:
