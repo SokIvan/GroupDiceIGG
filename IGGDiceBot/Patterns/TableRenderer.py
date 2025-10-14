@@ -79,7 +79,7 @@ class TableRenderer:
                 cell_value = df.iloc[i, j]
                 if cell_value:  # Если ячейка не пустая
                     color_type = self.classify_player(cell_value, leaders, soldiers, updated_players)
-                    table[(i+1, j)].set_face_color(self.colors[color_type])
+                    table[(i+1, j)].set_facecolor(self.colors[color_type])
         
         # Сохраняем в BytesIO
         buf = BytesIO()
