@@ -24,8 +24,8 @@ class PatternManager:
         # Сначала сбрасываем все статусы
         self.db.client.table('table_patterns')\
             .update({'status': 'Disable'})\
-            .execute()
-        
+            .neq('status', 'Disable').execute()
+
         # Устанавливаем новый активный
         self.db.client.table('table_patterns')\
             .update({'status': 'Active', 'updated_at': 'now()'})\
