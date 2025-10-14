@@ -938,9 +938,8 @@ async def process_pattern_selection(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора паттерна"""
     try:
         # Извлекаем ID из текста кнопки
-        pattern = callback.message.text.split(" ")[-1]
-        print(f'pattern_text:{pattern}')
-        pattern_id = int(pattern)
+        print(f'pattern_text:{callback.message.text}')
+        pattern_id = int(callback.message.text.split(" ")[-1])
         print(f"Pattern_ID:{pattern_id}")
         
         pattern_manager = PatternManager(db)
