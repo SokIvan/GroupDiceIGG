@@ -592,7 +592,7 @@ async def view_table(callback: CallbackQuery):
         return
     
     # Получаем данные игроков     
-    users_response = db.get_all_players()
+    users_response = await db.get_all_players()
     # Здесь нужно получить списки лидеров, солдат и обновивших
     # (замените на вашу логику получения этих списков)
     leaders = db.get_leaders()  # Ваша логика для лидеров
