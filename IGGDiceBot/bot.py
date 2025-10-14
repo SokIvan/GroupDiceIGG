@@ -1,7 +1,7 @@
 import json
 from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, InputFile
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from Patterns.PatternManager import PatternManager
@@ -604,9 +604,10 @@ async def view_table(callback: CallbackQuery):
     
     # Создаем изображение
     image_buf = renderer.create_table_image(pattern, grouped_players, leaders, soldiers, updated_players)
+    image_buf.seek(0)
+    photo_bytes = image_buf.getvalue()
     
-    
-    await callback.message.answer_photo(photo=image_buf,caption=summary)
+    await callback.message.answer_photo(photo=BufferedInputFile(photo_bytes, filename='player_table.png'),caption=summary)
     await callback.answer("Статистика сформирована!")
 # Cancel handler
 @router.callback_query(F.data == "cancel")
