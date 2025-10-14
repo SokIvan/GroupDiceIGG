@@ -7,7 +7,7 @@ from Patterns.Pattern import Pattern
 import tempfile
 import os
 
-class TableRender:
+class TableRenderer:
     def __init__(self):
         self.colors = {
             'leader': '#90EE90',
