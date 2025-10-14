@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import Dict, List
 from Patterns.Pattern import Pattern
 
-class AlternativeTableRenderer:
+class TableRenderer:
     def __init__(self):
         self.colors = {
             'leader': '#90EE90',
