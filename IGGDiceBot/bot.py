@@ -606,7 +606,7 @@ async def view_table(callback: CallbackQuery):
     image_buf = renderer.create_table_image(pattern, grouped_players, leaders, soldiers, updated_players)
     
     
-    await callback.message.answer_photo(InputFile(image_buf, filename='player_table.png'),caption=summary)
+    await callback.message.answer_photo(photo=image_buf,caption=summary)
     await callback.answer("Статистика сформирована!")
 # Cancel handler
 @router.callback_query(F.data == "cancel")
