@@ -71,7 +71,7 @@ class TableRenderer:
         # Цвета для ячеек
         for i in range(len(df.columns)):
             # Шапка
-            table[(0, i)].set_face_color(self.colors['header'])
+            table[(0, i)].set_facecolor(self.colors['header'])
             table[(0, i)].set_text_props(weight='bold')
         
         for i in range(len(df)):
