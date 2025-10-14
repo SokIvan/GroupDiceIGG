@@ -1,114 +1,130 @@
-# AdvancedPILRenderer.py
-from typing import Dict, List
+# WeasyPrintRenderer.py
+from weasyprint import HTML, CSS
+from weasyprint.text.fonts import FontConfiguration
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
-import requests
+from typing import Dict, List
+from Patterns.Pattern import Pattern
 import tempfile
 import os
-from Patterns.Pattern import Pattern
 
-class TableRenderer:
+class WeasyPrintRenderer:
     def __init__(self):
-        self.font = self._load_emoji_font()
         self.colors = {
             'leader': '#90EE90',
             'soldier': '#FFA500', 
             'updated': '#ADD8E6',
             'default': '#FFFFFF',
             'header': '#F0F0F0',
-            'nopattern': '#FFCCCC',
-            'border': '#000000'
+            'nopattern': '#FFCCCC'
         }
-    
-    def _load_emoji_font(self):
-        """Загружаем шрифт с поддержкой эмодзи"""
-        try:
-            # Пробуем разные шрифты
-            font_paths = [
-                # Попробуем системные шрифты
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            ]
-            
-            for font_path in font_paths:
-                if os.path.exists(font_path):
-                    return ImageFont.truetype(font_path, 16)
-            
-            # Если системные не нашли, загружаем из интернета
-            return self._download_font()
-            
-        except Exception as e:
-            print(f"Ошибка загрузки шрифта: {e}")
-            return ImageFont.load_default()
-    
-    def _download_font(self):
-        """Скачиваем шрифт с поддержкой эмодзи"""
-        font_url = "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf"
-        
-        try:
-            temp_dir = tempfile.gettempdir()
-            font_path = os.path.join(temp_dir, "NotoColorEmoji.ttf")
-            
-            if not os.path.exists(font_path):
-                response = requests.get(font_url, timeout=30)
-                with open(font_path, 'wb') as f:
-                    f.write(response.content)
-            
-            return ImageFont.truetype(font_path, 16)
-        except:
-            return ImageFont.load_default()
     
     def create_table_image(self, pattern: Pattern, grouped_players: Dict[str, List[str]], 
                           leaders: List[str], soldiers: List[str], updated_players: List[str]) -> BytesIO:
-        """Создание таблицы с улучшенной поддержкой Unicode"""
+        """Создание таблицы через WeasyPrint"""
         
         if 'NOPATTERN' in grouped_players and grouped_players['NOPATTERN']:
             columns = pattern.pattern_elements + ['NOPATTERN']
         else:
             columns = pattern.pattern_elements
         
+        html_content = self._create_html_table(columns, grouped_players, leaders, soldiers, updated_players)
+        
+        try:
+            font_config = FontConfiguration()
+            css = CSS(string='''
+                @font-face {
+                    font-family: 'EmojiFont';
+                    src: local('Apple Color Emoji'), 
+                         local('Segoe UI Emoji'), 
+                         local('Noto Color Emoji');
+                }
+                body {
+                    font-family: 'EmojiFont', sans-serif;
+                }
+            ''', font_config=font_config)
+            
+            html = HTML(string=html_content)
+            buf = BytesIO()
+            
+            html.write_png(buf, stylesheets=[css], font_config=font_config)
+            buf.seek(0)
+            return buf
+            
+        except Exception as e:
+            print(f"Ошибка WeasyPrint: {e}")
+            return self._create_fallback_image(columns, grouped_players)
+    
+    def _create_html_table(self, columns, grouped_players, leaders, soldiers, updated_players):
         max_rows = max(len(players) for players in grouped_players.values()) if grouped_players else 0
-        num_cols = len(columns)
-        num_rows = max(1, max_rows) + 1
         
-        # Автоматически подбираем размеры
-        cell_width = 200
-        cell_height = 60
+        html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Noto+Sans:wght@400;700&display=swap');
         
-        img_width = num_cols * cell_width + 10
-        img_height = num_rows * cell_height + 10
+        body {{
+            margin: 0;
+            padding: 20px;
+            font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Noto Sans", sans-serif;
+            font-size: 14px;
+        }}
         
-        img = Image.new('RGB', (img_width, img_height), 'white')
-        draw = ImageDraw.Draw(img)
+        .table-container {{
+            width: 100%;
+        }}
         
-        # Рисуем заголовки
-        for col_idx, column in enumerate(columns):
-            x = col_idx * cell_width + 5
-            y = 5
-            
+        table {{
+            border-collapse: collapse;
+            width: 100%;
+            border: 2px solid #000;
+        }}
+        
+        th, td {{
+            border: 1px solid #000;
+            padding: 12px;
+            text-align: center;
+            min-width: 150px;
+            max-width: 200px;
+            word-wrap: break-word;
+        }}
+        
+        th {{
+            font-weight: bold;
+            font-size: 16px;
+        }}
+        
+        tr:nth-child(even) {{
+            background-color: #f9f9f9;
+        }}
+    </style>
+</head>
+<body>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+'''
+        
+        # Заголовки
+        for column in columns:
             bg_color = self.colors['nopattern'] if column == 'NOPATTERN' else self.colors['header']
-            draw.rectangle([x, y, x + cell_width - 10, y + cell_height - 10], 
-                          fill=bg_color, outline=self.colors['border'], width=2)
-            
-            # Текст заголовка
-            bbox = draw.textbbox((0, 0), column, font=self.font)
-            text_width = bbox[2] - bbox[0]
-            text_x = x + (cell_width - 10 - text_width) // 2
-            text_y = y + 15
-            
-            draw.text((text_x, text_y), column, fill='black', font=self.font)
+            html += f'<th style="background-color: {bg_color};">{self._escape_html(column)}</th>'
         
-        # Рисуем данные
-        for col_idx, column in enumerate(columns):
-            players = grouped_players.get(column, [])
-            
-            for row_idx in range(max_rows):
-                x = col_idx * cell_width + 5
-                y = (row_idx + 1) * cell_height + 5
+        html += '''
+                </tr>
+            </thead>
+            <tbody>
+'''
+        
+        # Данные
+        for i in range(max_rows):
+            html += '<tr>'
+            for column in columns:
+                players = grouped_players.get(column, [])
+                player_name = players[i] if i < len(players) else ''
                 
-                player_name = players[row_idx] if row_idx < len(players) else ""
-                
-                # Определяем цвет
                 if player_name:
                     if player_name in leaders:
                         bg_color = self.colors['leader']
@@ -121,40 +137,45 @@ class TableRenderer:
                 else:
                     bg_color = self.colors['default']
                 
-                # Рисуем ячейку
-                draw.rectangle([x, y, x + cell_width - 10, y + cell_height - 10], 
-                              fill=bg_color, outline=self.colors['border'], width=1)
-                
-                if player_name:
-                    # Обрезаем длинный текст
-                    display_text = player_name
-                    max_width = cell_width - 20
-                    
-                    # Проверяем ширину текста
-                    bbox = draw.textbbox((0, 0), display_text, font=self.font)
-                    text_width = bbox[2] - bbox[0]
-                    
-                    if text_width > max_width:
-                        # Поиск оптимальной длины
-                        for i in range(len(player_name)-3, 0, -1):
-                            trial_text = player_name[:i] + "..."
-                            bbox = draw.textbbox((0, 0), trial_text, font=self.font)
-                            if bbox[2] - bbox[0] <= max_width:
-                                display_text = trial_text
-                                break
-                    
-                    # Центрируем текст
-                    bbox = draw.textbbox((0, 0), display_text, font=self.font)
-                    text_width = bbox[2] - bbox[0]
-                    text_height = bbox[3] - bbox[1]
-                    
-                    text_x = x + (cell_width - 10 - text_width) // 2
-                    text_y = y + (cell_height - 10 - text_height) // 2
-                    
-                    draw.text((text_x, text_y), display_text, fill='black', font=self.font)
+                html += f'<td style="background-color: {bg_color};">{self._escape_html(player_name)}</td>'
+            
+            html += '</tr>'
+        
+        html += '''
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>'''
+        return html
+    
+    def _escape_html(self, text):
+        """Экранирование HTML"""
+        if not text:
+            return ""
+        return (text.replace('&', '&amp;')
+                  .replace('<', '&lt;')
+                  .replace('>', '&gt;')
+                  .replace('"', '&quot;'))
+    
+    def _create_fallback_image(self, columns, grouped_players):
+        from PIL import Image, ImageDraw
+        
+        img = Image.new('RGB', (800, 600), 'white')
+        draw = ImageDraw.Draw(img)
+        
+        y = 10
+        for col in columns:
+            players = grouped_players.get(col, [])
+            draw.text((10, y), f"=== {col} ===", fill='black')
+            y += 20
+            for player in players[:5]:
+                draw.text((20, y), player, fill='black')
+                y += 15
+            y += 10
         
         buf = BytesIO()
-        img.save(buf, format='PNG', optimize=True)
+        img.save(buf, format='PNG')
         buf.seek(0)
         return buf
     
