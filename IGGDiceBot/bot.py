@@ -600,7 +600,7 @@ async def view_table(callback: CallbackQuery):
     updated_players = db.get_recent_players()  # Игроки, обновившие имя за последние N дней
     
     renderer = TableRenderer()
-    grouped_players = renderer.group_players_by_pattern(users_response.data, pattern)
+    grouped_players = renderer.group_players_by_pattern(users_response, pattern)
     
     # Создаем изображение
     image_buf = renderer.create_table_image(pattern, grouped_players, leaders, soldiers, updated_players)
