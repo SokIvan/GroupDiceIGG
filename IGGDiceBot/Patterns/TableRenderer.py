@@ -1,98 +1,170 @@
-# SimpleMatplotlibRenderer.py
-import matplotlib.pyplot as plt
-import pandas as pd
-from io import BytesIO
+# ImprovedPILRenderer.py
 from typing import Dict, List
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+import requests
+import tempfile
+import os
 from Patterns.Pattern import Pattern
-from PIL import Image
 
 class TableRenderer:
     def __init__(self):
-        self.setup_styles()
-    
-    def setup_styles(self):
-        """Простая настройка с использованием системных шрифтов"""
-        plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'Apple Symbols', 'Segoe UI Symbol']
-        plt.rcParams['axes.unicode_minus'] = False
-        
+        self.font_path = self._get_emoji_font()
         self.colors = {
             'leader': '#90EE90',
             'soldier': '#FFA500', 
             'updated': '#ADD8E6',
-            'default': 'white',
+            'default': '#FFFFFF',
             'header': '#F0F0F0',
-            'nopattern': '#FFCCCC'
+            'nopattern': '#FFCCCC',
+            'border': '#000000'
         }
+    
+    def _get_emoji_font(self):
+        """Получаем путь к шрифту с поддержкой эмодзи"""
+        # Попробуем найти системные шрифты с поддержкой эмодзи
+        system_fonts = [
+            "seguiemj.ttf",  # Windows Segoe UI Emoji
+            "Apple Color Emoji.ttf",  # Mac
+            "NotoColorEmoji.ttf",  # Linux
+            "arial.ttf"  # Fallback
+        ]
+        
+        # Стандартные пути к шрифтам
+        font_dirs = [
+            "C:/Windows/Fonts",
+            "/System/Library/Fonts",
+            "/usr/share/fonts",
+            "/Library/Fonts"
+        ]
+        
+        for font_dir in font_dirs:
+            if os.path.exists(font_dir):
+                for font_file in system_fonts:
+                    font_path = os.path.join(font_dir, font_file)
+                    if os.path.exists(font_path):
+                        return font_path
+        
+        return None
     
     def create_table_image(self, pattern: Pattern, grouped_players: Dict[str, List[str]], 
                           leaders: List[str], soldiers: List[str], updated_players: List[str]) -> BytesIO:
+        """Создание таблицы с улучшенной поддержкой эмодзи"""
         
-        # Добавляем NOPATTERN
-        if 'NOPATTERN' in grouped_players:
+        # Добавляем столбец NOPATTERN
+        if 'NOPATTERN' in grouped_players and grouped_players['NOPATTERN']:
             columns = pattern.pattern_elements + ['NOPATTERN']
         else:
             columns = pattern.pattern_elements
         
-        # Создаем DataFrame
-        max_rows = max(len(players) for players in grouped_players.values())
-        data = {}
+        # Определяем размеры
+        max_rows = max(len(players) for players in grouped_players.values()) if grouped_players else 0
+        num_cols = len(columns)
+        num_rows = max(1, max_rows) + 1  # Минимум 1 строка данных + заголовок
         
-        for col in columns:
-            players_list = grouped_players.get(col, [])
-            # Дополняем до максимальной длины
-            players_list.extend([''] * (max_rows - len(players_list)))
-            data[col] = players_list
+        # Параметры
+        cell_width = 220
+        cell_height = 70
+        font_size = 16
+        border = 2
         
-        df = pd.DataFrame(data)
+        # Размер изображения
+        img_width = num_cols * cell_width + border
+        img_height = num_rows * cell_height + border
         
-        # Создаем фигуру
-        fig, ax = plt.subplots(figsize=(len(columns) * 2, max_rows * 0.5 + 1))
-        ax.axis('tight')
-        ax.axis('off')
+        # Создаем изображение
+        img = Image.new('RGB', (img_width, img_height), 'white')
+        draw = ImageDraw.Draw(img)
         
-        # Создаем таблицу
-        table = plt.table(cellText=df.values,
-                         colLabels=df.columns,
-                         cellLoc='center',
-                         loc='center',
-                         bbox=[0, 0, 1, 1])
+        # Загружаем шрифт
+        try:
+            if self.font_path:
+                font = ImageFont.truetype(self.font_path, font_size)
+            else:
+                # Пытаемся использовать любой доступный шрифт
+                font = ImageFont.load_default()
+        except:
+            font = ImageFont.load_default()
         
-        # Стилизуем
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 1.5)
+        # Функция для измерения текста
+        def get_text_size(text):
+            try:
+                bbox = draw.textbbox((0, 0), text, font=font)
+                return bbox[2] - bbox[0], bbox[3] - bbox[1]
+            except:
+                return len(text) * 10, 20
         
-        # Цвета
-        for i in range(len(df.columns)):
-            # Заголовок
-            header_color = self.colors['nopattern'] if df.columns[i] == 'NOPATTERN' else self.colors['header']
-            table[(0, i)].set_facecolor(header_color)
-            table[(0, i)].set_text_props(weight='bold')
+        # Рисуем заголовки
+        for col_idx, column in enumerate(columns):
+            x = col_idx * cell_width
+            y = 0
             
-            # Данные
-            for j in range(len(df)):
-                cell_value = df.iloc[j, i]
-                if cell_value.strip():
-                    if cell_value in leaders:
-                        color = self.colors['leader']
-                    elif cell_value in soldiers:
-                        color = self.colors['soldier']
-                    elif cell_value in updated_players:
-                        color = self.colors['updated']
-                    else:
-                        color = self.colors['default']
-                    table[(j+1, i)].set_facecolor(color)
+            # Цвет фона
+            bg_color = self.colors['nopattern'] if column == 'NOPATTERN' else self.colors['header']
+            draw.rectangle([x, y, x + cell_width, y + cell_height], 
+                          fill=bg_color, outline=self.colors['border'], width=border)
+            
+            # Текст заголовка
+            text_width, text_height = get_text_size(column)
+            text_x = x + (cell_width - text_width) // 2
+            text_y = y + (cell_height - text_height) // 2
+            
+            draw.text((text_x, text_y), column, fill='black', font=font)
+        
+        # Рисуем данные
+        for col_idx, column in enumerate(columns):
+            players = grouped_players.get(column, [])
+            
+            for row_idx in range(max_rows):
+                x = col_idx * cell_width
+                y = (row_idx + 1) * cell_height
+                
+                player_name = players[row_idx] if row_idx < len(players) else ""
+                
+                # Определяем цвет
+                if player_name in leaders:
+                    bg_color = self.colors['leader']
+                elif player_name in soldiers:
+                    bg_color = self.colors['soldier']
+                elif player_name in updated_players:
+                    bg_color = self.colors['updated']
+                else:
+                    bg_color = self.colors['default']
+                
+                # Рисуем ячейку
+                draw.rectangle([x, y, x + cell_width, y + cell_height], 
+                              fill=bg_color, outline=self.colors['border'], width=border)
+                
+                if player_name:
+                    # Обрезаем текст если не помещается
+                    max_text_width = cell_width - 20
+                    display_text = player_name
+                    text_width, text_height = get_text_size(display_text)
+                    
+                    if text_width > max_text_width:
+                        # Постепенно обрезаем текст
+                        for i in range(len(player_name)-3, 0, -1):
+                            trial_text = player_name[:i] + "..."
+                            trial_width, _ = get_text_size(trial_text)
+                            if trial_width <= max_text_width:
+                                display_text = trial_text
+                                break
+                    
+                    # Центрируем текст
+                    text_width, text_height = get_text_size(display_text)
+                    text_x = x + (cell_width - text_width) // 2
+                    text_y = y + (cell_height - text_height) // 2
+                    
+                    draw.text((text_x, text_y), display_text, fill='black', font=font)
         
         # Сохраняем
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', 
-                   facecolor='white', edgecolor='none')
+        img.save(buf, format='PNG', optimize=True)
         buf.seek(0)
-        plt.close()
-        
         return buf
     
     def group_players_by_pattern(self, players: List[Dict], pattern: Pattern) -> Dict[str, List[str]]:
+        """Логика группировки"""
         grouped = {element: [] for element in pattern.pattern_elements}
         grouped['NOPATTERN'] = []
         remaining_players = players.copy()
