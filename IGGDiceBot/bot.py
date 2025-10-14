@@ -595,9 +595,9 @@ async def view_table(callback: CallbackQuery):
     users_response = await db.get_all_players()
     # Здесь нужно получить списки лидеров, солдат и обновивших
     # (замените на вашу логику получения этих списков)
-    leaders = db.get_leaders()  # Ваша логика для лидеров
-    soldiers = db.get_soldiers()  # Ваша логика для солдат
-    updated_players = db.get_recent_players()  # Игроки, обновившие имя за последние N дней
+    leaders = await db.get_leaders()  # Ваша логика для лидеров
+    soldiers = await db.get_soldiers()  # Ваша логика для солдат
+    updated_players = await db.get_recent_players()  # Игроки, обновившие имя за последние N дней
     
     renderer = TableRenderer()
     grouped_players = renderer.group_players_by_pattern(users_response, pattern)
